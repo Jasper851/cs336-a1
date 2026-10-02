@@ -1,19 +1,42 @@
 import os
 from pathlib import Path
 import regex as re
+from cs336_basics.pretokenization_example import find_chunk_boundaries
 
+
+
+def chunking(
+        input_path: str|os.PathLike,
+        special_tokens: list[str]
+):
+    """
+    将长文本chunk化，分别预处理
+    """
+    file_size_bytes = os.path.getsize(input_path)
+    target_chunk_size_bytes = 512 * 1024 * 1024
+    desired_num_chunks = file_size_bytes//target_chunk_size_bytes + 1
+    split_special_tokens = "<|endoftext|>".encode("utf-8")
+
+    pre_token_count = {}
+
+    with open(input_path,"rb") as file:
+        boundaries = find_chunk_boundaries(file,desired_num_chunks,split_special_tokens)
+        for start, end in zip(boundaries[:-1],boundaries[1:]):
+            file.seek(start)
+            chunk = file.read(end - start).decode("utf-8",errors="ignore")
+            corpus = preparation(chunk,special_tokens)
+            pre_token_count = pre_tokenization(corpus,pre_token_count)
+
+    return pre_token_count
 
 
 def preparation(
-    input_path: str|os.PathLike,
+    text: str,
     special_tokens: list[str]
 ):
     """
     读取语料，并按special_tokens划分
     """
-
-    text = Path(input_path).read_text(encoding="utf-8")
-
     if not special_tokens:
         return [text]
 
@@ -36,12 +59,12 @@ def str_to_tuple_bytes(
 
 def pre_tokenization(
         corpus: list[str],
+        pre_token_count: dict
 ):
     """
     对划分后的每部分做pre-tokenization，转换str得到dict[tuple[bytes,...],int]
     """
     PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
-    pre_token_count = {}
     for sentence in corpus:
         for match in re.finditer(PAT,sentence):
             token = match.group()
@@ -114,7 +137,8 @@ def merge(
         raise ValueError("vocab_size is too small!")
 
     merges = []
-    pre_token_count = pre_tokenization(preparation(input_path,special_tokens))
+    pre_token_count = chunking(input_path,special_tokens)
+    print("Starting merging...")
 
 
     while len(vocab) < vocab_size:
