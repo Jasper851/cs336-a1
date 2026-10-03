@@ -152,9 +152,12 @@ def merge(
         vocab[len(vocab)] = new_token
         pre_token_count = update_pretoken(pre_token_count,best_pair,new_token)
 
+        if len(vocab) % 100 == 0:
+            print(f"Vocab length: {len(vocab)}, merges length: {len(merges)}")
+
     return (vocab,merges)
 
-    
+
 
 import argparse
 
