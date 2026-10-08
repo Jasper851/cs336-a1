@@ -27,7 +27,6 @@ class Linear(nn.Module):
 
 
 
-
 class Embedding(nn.Module):
     def __init__(self, num_embeddings, embedding_dim, device = None, dtype = None):
         """
@@ -46,3 +45,49 @@ class Embedding(nn.Module):
 
     def forward(self, token_ids: torch.Tensor) -> torch.Tensor:
         return self.weight[token_ids]
+
+
+
+class RMSNorm(nn.Module):
+    def __init__(self, d_model: int, eps: float = 1e-5, device = None, dtype = None):
+        """
+        d_model: int
+        eps: float = 1e-5
+        device: torch.device | None = None
+        dtype: torch.dtype | None = None
+        """
+        super().__init__()
+        self.d_model = d_model
+        self.eps = eps
+        self.weight = torch.ones(d_model,device=device,dtype=dtype)
+        self.weight = nn.Parameter(self.weight)
+
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        in_dtype = x.dtype
+        x = x.to(torch.float32)
+        mean_square = x.pow(2).mean(dim=-1,keepdim=True)
+        rms = torch.sqrt(mean_square + self.eps)
+        normalized = x / rms
+        return normalized.to(in_dtype) * self.weight
+
+
+
+class SwiGLU(nn.Module):
+    def __init__(self, d_model: int, d_ff: int = None, device = None, dtype = None):
+        super().__init__()
+        self.d_model = d_model
+        if not d_ff:
+            d_ff = 64 * torch.floor(d_model / 24 + 0.5)
+        self.d_ff = d_ff
+        self.w1 = Linear(d_model,d_ff,device,dtype)
+        self.w2 = Linear(d_ff,d_model,device,dtype)
+        self.w3 = Linear(d_model,d_ff,device,dtype)
+
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        w1x = self.w1(x)
+        return self.w2((w1x*torch.sigmoid(w1x))*self.w3(x))
+
+
+

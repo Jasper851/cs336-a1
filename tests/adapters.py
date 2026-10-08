@@ -30,8 +30,6 @@ def run_linear(
     """
 
     import cs336_basics.model as model
-    import torch
-    import torch.nn as nn
     linear = model.Linear(d_in,d_out)
     params = {"weight": weights}
     linear.load_state_dict(params)
@@ -58,8 +56,6 @@ def run_embedding(
     """
 
     import cs336_basics.model as model
-    import torch
-    import torch.nn as nn
     embedding = model.Embedding(vocab_size,d_model)
     params = {"weight": weights}
     embedding.load_state_dict(params)
@@ -95,7 +91,11 @@ def run_swiglu(
     # swiglu.w1.weight.data = w1_weight
     # swiglu.w2.weight.data = w2_weight
     # swiglu.w3.weight.data = w3_weight
-    raise NotImplementedError
+    import cs336_basics.model as model
+    swiglu = model.SwiGLU(d_model,d_ff)
+    weights = {"w1.weight": w1_weight, "w2.weight": w2_weight, "w3.weight": w3_weight}
+    swiglu.load_state_dict(weights)
+    return swiglu(in_features)
 
 
 def run_scaled_dot_product_attention(
@@ -390,7 +390,11 @@ def run_rmsnorm(
         Float[Tensor,"... d_model"]: Tensor of with the same shape as `in_features` with the output of running
         RMSNorm of the `in_features`.
     """
-    raise NotImplementedError
+    import cs336_basics.model as model
+    rmsnorm = model.RMSNorm(d_model,eps)
+    params = {"weight": weights}
+    rmsnorm.load_state_dict(params)
+    return rmsnorm(in_features)
 
 
 def run_silu(in_features: Float[Tensor, " ..."]) -> Float[Tensor, " ..."]:
