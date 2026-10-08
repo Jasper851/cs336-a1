@@ -29,7 +29,13 @@ def run_linear(
         Float[Tensor, "... d_out"]: The transformed output of your linear module.
     """
 
-    raise NotImplementedError
+    import cs336_basics.model as model
+    import torch
+    import torch.nn as nn
+    linear = model.Linear(d_in,d_out)
+    params = {"weight": weights}
+    linear.load_state_dict(params)
+    return linear(in_features)
 
 
 def run_embedding(
@@ -51,7 +57,13 @@ def run_embedding(
         Float[Tensor, "... d_model"]: Batch of embeddings returned by your Embedding layer.
     """
 
-    raise NotImplementedError
+    import cs336_basics.model as model
+    import torch
+    import torch.nn as nn
+    embedding = model.Embedding(vocab_size,d_model)
+    params = {"weight": weights}
+    embedding.load_state_dict(params)
+    return embedding(token_ids)
 
 
 def run_swiglu(
