@@ -91,3 +91,60 @@ class SwiGLU(nn.Module):
 
 
 
+class RoPE(nn.Module):
+    def __init__(self, theta: float, d_k: int, max_seq_len: int, device = None):
+        super().__init__()
+        self.d_k = d_k
+        self.max_seq_len = max_seq_len
+        dimension_indices = torch.arange(0,d_k,2,device=device,dtype=torch.float32)
+        inverse_freq = theta ** (-dimension_indices / d_k)
+        positions = torch.arange(max_seq_len,device=device,dtype=torch.float32)
+        angles = torch.outer(positions,inverse_freq)
+        self.register_buffer("cos_cached",torch.cos(angles),persistent=False)
+        self.register_buffer("sin_cached",torch.sin(angles),persistent=False)
+
+
+    def forward(self, x: torch.Tensor, token_positions: torch.Tensor) -> torch.Tensor:
+        cos = self.cos_cached[token_positions].to(dtype=x.dtype)
+        sin = self.sin_cached[token_positions].to(dtype=x.dtype)
+        x_pairs = x.reshape(*x.shape[:-1],self.d_k//2,2)
+        x_even = x_pairs[...,0]
+        x_odd = x_pairs[...,1]
+        rotated_even = x_even * cos - x_odd * sin
+        rotated_odd = x_even * sin + x_odd * cos
+        rotated_pairs = torch.stack((rotated_even,rotated_odd),dim=-1)
+        return rotated_pairs.reshape_as(x)
+
+
+
+def softmax(x: torch.Tensor, dim: int) -> torch.Tensor:
+    max_to_subtract = torch.max(x,dim=dim,keepdim=True).values
+    tricked_x = x - max_to_subtract
+    exponentials = torch.exp(tricked_x)
+    denominator = torch.sum(exponentials,dim=dim,keepdim=True)
+    return exponentials / denominator
+
+
+
+def scaled_dot_product_attention(Q: torch.Tensor, K: torch.Tensor, V: torch.Tensor, mask: torch.Tensor = None) -> torch.Tensor:
+    K_T = rearrange(K, "... keys d_k -> ... d_k keys")
+    d_k = Q.shape[-1]
+    similarity = einsum(Q, K_T, "... queries d_k, ... d_k keys -> ... queries keys")
+    shifted = similarity / d_k ** 0.5
+    if mask is None:
+        masked = shifted
+    else:
+        masked = torch.masked_fill(shifted,~mask,-torch.inf)
+    softmaxed = softmax(masked,dim=-1)
+    return einsum(softmaxed, V, "... queries keys, ... keys d_v -> ... queries d_v")
+
+
+
+class Mutihead_self_attention(nn.Module):
+    def __init__(self, d_model: int, num_heads: int, device = None, dtype = None):
+        super().__init__()
+        
+
+
+    def forward(x: torch.Tensor) -> torch.Tensor:
+        pass
