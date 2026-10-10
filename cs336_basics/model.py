@@ -77,8 +77,8 @@ class SwiGLU(nn.Module):
     def __init__(self, d_model: int, d_ff: int = None, device = None, dtype = None):
         super().__init__()
         self.d_model = d_model
-        if not d_ff:
-            d_ff = 64 * torch.floor(d_model / 24 + 0.5)
+        if d_ff is None:
+            d_ff = (d_model + 12) // 24 * 64
         self.d_ff = d_ff
         self.w1 = Linear(d_model,d_ff,device,dtype)
         self.w2 = Linear(d_ff,d_model,device,dtype)
@@ -140,11 +140,40 @@ def scaled_dot_product_attention(Q: torch.Tensor, K: torch.Tensor, V: torch.Tens
 
 
 
-class Mutihead_self_attention(nn.Module):
-    def __init__(self, d_model: int, num_heads: int, device = None, dtype = None):
+class Multihead_self_attention(nn.Module):
+    def __init__(self, d_model: int, num_heads: int, theta: float = None, max_seq_len: int = None, device = None, dtype = None):
         super().__init__()
+        self.d_model = d_model
+        self.num_heads = num_heads
+        if d_model % num_heads != 0:
+            raise RuntimeError("d_model cannot be divided by num_heads")
         
+        self.d_k = d_model // num_heads
+        self.q_proj = Linear(d_model,d_model,device,dtype)
+        self.k_proj = Linear(d_model,d_model,device,dtype)
+        self.v_proj = Linear(d_model,d_model,device,dtype)
+        self.output_proj = Linear(d_model,d_model,device,dtype)
+        self.with_rope = False
+        if theta is not None:
+            self.with_rope = True
+            self.rope = RoPE(theta,self.d_k,max_seq_len,device)
 
 
-    def forward(x: torch.Tensor) -> torch.Tensor:
-        pass
+    def forward(self, x: torch.Tensor, token_positions: torch.Tensor = None) -> torch.Tensor:
+        Q = self.q_proj(x)
+        K = self.k_proj(x)
+        V = self.v_proj(x)
+        Q = rearrange(Q, "... sequence_length (num_heads d_k) -> ... num_heads sequence_length d_k", num_heads = self.num_heads)
+        K = rearrange(K, "... sequence_length (num_heads d_k) -> ... num_heads sequence_length d_k", num_heads = self.num_heads)
+        V = rearrange(V, "... sequence_length (num_heads d_k) -> ... num_heads sequence_length d_k", num_heads = self.num_heads)
+        if self.with_rope:
+            Q = self.rope(Q,token_positions)
+            K = self.rope(K,token_positions)
+
+        sequence_length = x.shape[-2]
+        mask = torch.ones((sequence_length,sequence_length),device=x.device,dtype=torch.bool)
+        mask = torch.triu(mask,diagonal=1)
+        mask = ~mask
+        attention = scaled_dot_product_attention(Q,K,V,mask)
+        attention = rearrange(attention, "... num_heads sequence_length d_k -> ... sequence_length (num_heads d_k)")
+        return self.output_proj(attention)
