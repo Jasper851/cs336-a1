@@ -3,6 +3,7 @@ import torch.nn as nn
 from collections.abc import Callable, Iterable
 from typing import Optional
 import math
+import numpy as np
 
 def cross_entropy(logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
     shifted_logits = logits - torch.max(logits,dim=-1,keepdim=True).values
@@ -80,4 +81,42 @@ def gradient_clipping(params, M) -> None:
                 gradient.mul_(scale)
 
 
-                
+
+def get_batch(dataset: np.ndarray, batch_size: int, context_length: int, device = 'mps') -> tuple[torch.Tensor, torch.Tensor]:
+    starts = np.random.randint(low=0,high=len(dataset)-context_length,size=batch_size)
+    offsets = np.arange(context_length + 1)
+    indices = starts[:, None] + offsets[None, :]
+    sequences = dataset[indices]
+    sequences = torch.tensor(sequences,dtype=torch.long,device=device)
+    inputs = sequences[:, :-1]
+    targets = sequences[:, 1:]
+    return inputs, targets
+
+
+
+def save_checkpoint(model, optimizer, iteration, out):
+    """
+    model: torch.nn.Module,
+    optimizer: torch.optim.Optimizer,
+    iteration: int,
+    out: str | os.Pathlike | typing.BinaryIO | typing.IO[bytes],
+    """
+    obj = {
+        "model": model.state_dict(),
+        "optimizer": optimizer.state_dict(),
+        "iteration": iteration
+    }
+    torch.save(obj,out)
+
+
+
+def load_checkpoint(src, model, optimizer) -> int:
+    """
+    src: str | os.Pathlike | typing.BinaryIO | typing.IO[bytes],
+    model: torch.nn.Module,
+    optimizer: torch.optim.Optimizer,
+    """
+    obj = torch.load(src)
+    model.load_state_dict(obj["model"])
+    optimizer.load_state_dict(obj["optimizer"])
+    return obj["iteration"]
