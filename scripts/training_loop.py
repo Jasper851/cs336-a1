@@ -38,23 +38,18 @@ def parse_args() -> argparse.Namespace:
     # Dataset and output paths.
     parser.add_argument("--train-data", type=Path, required=True, help="Tokenized training .npy file.")
     parser.add_argument("--valid-data", type=Path, required=True, help="Tokenized validation .npy file.")
+    parser.add_argument("--experiment-name", required=True, help="Unique directory name for this run.")
     parser.add_argument(
-        "--checkpoint-path",
+        "--output-dir",
         type=Path,
-        required=True,
-        help="File overwritten by each periodic checkpoint and by the final checkpoint.",
+        default=Path("artifacts/experiments"),
+        help="Root directory containing all experiment runs.",
     )
     parser.add_argument(
         "--resume-from",
         type=Path,
         default=None,
         help="Optional checkpoint from which to restore model, optimizer, and iteration.",
-    )
-    parser.add_argument(
-        "--log-path",
-        type=Path,
-        default=None,
-        help="Optional JSONL file for machine-readable training and validation metrics.",
     )
 
     # Transformer hyperparameters.
@@ -152,6 +147,8 @@ def validate_args(args: argparse.Namespace) -> None:
             raise FileNotFoundError(path)
     if args.resume_from is not None and not args.resume_from.is_file():
         raise FileNotFoundError(args.resume_from)
+    if not args.experiment_name or Path(args.experiment_name).name != args.experiment_name:
+        raise ValueError("--experiment-name must be a single directory name.")
 
 
 def choose_device(requested_device: str) -> torch.device:
@@ -219,6 +216,15 @@ def main() -> None:
     args = parse_args()
     validate_args(args)
 
+    experiment_dir = args.output_dir / args.experiment_name
+    checkpoint_path = experiment_dir / "checkpoint.pt"
+    log_path = experiment_dir / "metrics.jsonl"
+    if log_path.exists() and args.resume_from is None:
+        raise FileExistsError(
+            f"Experiment already exists: {experiment_dir}. Choose a new name or pass --resume-from."
+        )
+    experiment_dir.mkdir(parents=True, exist_ok=True)
+
     # Seed all random-number generators used by this script. PyTorch controls
     # initialization; NumPy controls the random starting offsets in get_batch.
     random.seed(args.seed)
@@ -260,13 +266,9 @@ def main() -> None:
                 f"--max-iterations={args.max_iterations}."
             )
 
-    args.checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
-    if args.log_path is not None:
-        args.log_path.parent.mkdir(parents=True, exist_ok=True)
-
     parameter_count = sum(parameter.numel() for parameter in model.parameters())
     write_metrics(
-        args.log_path,
+        log_path,
         {
             "event": "start",
             "config": {
@@ -322,7 +324,7 @@ def main() -> None:
                 now = time.perf_counter()
                 tokens_processed = steps_since_log * args.batch_size * args.context_length
                 write_metrics(
-                    args.log_path,
+                    log_path,
                     {
                         "event": "train",
                         "iteration": completed_iterations,
@@ -348,12 +350,14 @@ def main() -> None:
                     args.validation_batches,
                     device,
                 )
+                validation_finished = time.perf_counter()
                 write_metrics(
-                    args.log_path,
+                    log_path,
                     {
                         "event": "validation",
                         "iteration": completed_iterations,
                         "loss": validation_loss,
+                        "elapsed_seconds": validation_finished - training_started,
                     },
                 )
                 # Shift the throughput timer forward so validation work is not
@@ -362,14 +366,14 @@ def main() -> None:
 
             if completed_iterations % args.checkpoint_interval == 0:
                 checkpoint_started = time.perf_counter()
-                save_checkpoint(model, optimizer, completed_iterations, args.checkpoint_path)
+                save_checkpoint(model, optimizer, completed_iterations, checkpoint_path)
                 last_checkpoint_iteration = completed_iterations
                 write_metrics(
-                    args.log_path,
+                    log_path,
                     {
                         "event": "checkpoint",
                         "iteration": completed_iterations,
-                        "path": str(args.checkpoint_path),
+                        "path": str(checkpoint_path),
                     },
                 )
                 # Checkpoint I/O is likewise excluded from training throughput.
@@ -378,13 +382,13 @@ def main() -> None:
     except KeyboardInterrupt:
         # Preserve all completed optimizer updates if the user intentionally
         # interrupts a long run. The interrupted, unfinished step is never saved.
-        save_checkpoint(model, optimizer, completed_iterations, args.checkpoint_path)
+        save_checkpoint(model, optimizer, completed_iterations, checkpoint_path)
         write_metrics(
-            args.log_path,
+            log_path,
             {
                 "event": "interrupted",
                 "iteration": completed_iterations,
-                "checkpoint_path": str(args.checkpoint_path),
+                "checkpoint_path": str(checkpoint_path),
             },
         )
         raise
@@ -392,13 +396,13 @@ def main() -> None:
     # Always leave a final resumable state, even when max-iterations is not a
     # multiple of checkpoint-interval.
     if last_checkpoint_iteration != completed_iterations:
-        save_checkpoint(model, optimizer, completed_iterations, args.checkpoint_path)
+        save_checkpoint(model, optimizer, completed_iterations, checkpoint_path)
     write_metrics(
-        args.log_path,
+        log_path,
         {
             "event": "complete",
             "iteration": completed_iterations,
-            "checkpoint_path": str(args.checkpoint_path),
+            "checkpoint_path": str(checkpoint_path),
             "elapsed_seconds": time.perf_counter() - training_started,
         },
     )

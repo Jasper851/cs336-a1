@@ -162,5 +162,11 @@ cython_debug/
 .ruff_cache/
 *.zip
 
-# Generated tokenizer training outputs
-/artifacts/
+# Generated artifacts: keep only the experiment summary and final figures.
+/artifacts/*
+!/artifacts/experiments/
+/artifacts/experiments/*
+!/artifacts/experiments/experiment_log.md
+!/artifacts/experiments/figures/
+/artifacts/experiments/figures/*
+!/artifacts/experiments/figures/*.png
