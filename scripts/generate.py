@@ -28,6 +28,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--top-p", type=float, default=1.0)
     parser.add_argument("--device", default="auto")
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument(
+        "--output-path",
+        type=Path,
+        default=None,
+        help="Optional UTF-8 text file to which the generated text is written.",
+    )
     return parser.parse_args()
 
 
@@ -129,7 +135,12 @@ def main() -> None:
     eos_id = tokenizer.reversed_vocab[EOS.encode("utf-8")]
     if args.max_new_tokens > 0 and token_ids[-1] == eos_id:
         token_ids = token_ids[:-1]
-    print(tokenizer.decode(token_ids))
+    generated_text = tokenizer.decode(token_ids)
+    print(generated_text)
+
+    if args.output_path is not None:
+        args.output_path.parent.mkdir(parents=True, exist_ok=True)
+        args.output_path.write_text(generated_text, encoding="utf-8")
 
 
 if __name__ == "__main__":
