@@ -102,3 +102,5 @@ The conservative sample is the strongest fluency example. Generation quality is 
 validation loss of 1.6264 and the 40.96M-token training budget. Temperature and top-p control the other
 main tradeoff: lowering temperature improves consistency but reduces variety, while higher temperature
 and top-p increase diversity along with contradictions and repetition.
+> **Pending:** Due to current computational resource constraints, Experiments 7.3 (ablations), 7.4 (training on OpenWebText), and 7.5 (custom modifications and leaderboard submission) cannot be completed at this time and will be added once suitable resources become available.
+
